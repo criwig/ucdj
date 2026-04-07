@@ -1,0 +1,20 @@
+# Environment — contains SMTP credentials and secrets
+.env
+.env.local
+
+# Database
+data/
+
+# htpasswd — contains hashed passwords
+nginx/htpasswd
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/

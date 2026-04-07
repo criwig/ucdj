@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if mode == "submitted" %}Entries submitted{% else %}Guesses saved{% endif %}
+  — {{ game.title }}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>
+    {% if mode == "submitted" %}Entries submitted!{% else %}Guesses saved!{% endif %}
+  </h1>
+  <p class="text-muted">{{ game.title }} · playing as <strong>{{ player.name }}</strong></p>
+</div>
+
+<div class="card" style="text-align:center; padding:2rem 1.5rem">
+  <div style="font-size:3rem; margin-bottom:0.75rem">
+    {% if mode == "submitted" %}🎵{% else %}✅{% endif %}
+  </div>
+  {% if mode == "submitted" %}
+  <h2>Your entries have been saved.</h2>
+  <p class="text-muted" style="margin-top:0.5rem">
+    You can update them at any time before the admin starts the guessing phase.
+  </p>
+  {% else %}
+  <h2>Your guesses have been saved.</h2>
+  <p class="text-muted" style="margin-top:0.5rem">
+    You can update them at any time before the admin ends the game.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card token-card">
+  <div class="token-card-icon">🔗</div>
+  <div>
+    <h2 style="margin-bottom:0.25rem">Your personal link</h2>
+    <p class="text-muted mb-2">Save this link — it's the only way to return to your page and update your {{ "entries" if mode == "submitted" else "guesses" }}.</p>
+    <div class="copy-group">
+      <code class="code-block" id="player-url">{{ player_url }}</code>
+      <button class="btn btn-secondary btn-sm" onclick="copyText('player-url', this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<p class="text-muted" style="text-align:center; margin-top:0.75rem; font-size:0.875rem">
+  You can close this page now.
+</p>
+
+<script>
+  function copyText(id, btn) {
+    const text = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+</script>
+{% endblock %}

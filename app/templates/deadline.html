@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Deadline passed — {{ game.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Deadline has passed</h1>
+  <p class="text-muted">{{ game.title }} · {{ player.name }}</p>
+</div>
+
+<div class="card" style="text-align:center; padding:2rem 1.5rem">
+  <div style="font-size:3rem; margin-bottom:0.75rem">⏰</div>
+  {% if mode == "submit" %}
+  <h2>Submission deadline has passed.</h2>
+  <p class="text-muted" style="margin-top:0.5rem">
+    The admin set a deadline of <strong>{{ deadline.strftime("%-d %b %Y, %H:%M") }}</strong>.<br>
+    Your entries can no longer be changed.
+  </p>
+  {% else %}
+  <h2>Guessing deadline has passed.</h2>
+  <p class="text-muted" style="margin-top:0.5rem">
+    The admin set a deadline of <strong>{{ deadline.strftime("%-d %b %Y, %H:%M") }}</strong>.<br>
+    Your guesses can no longer be changed.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card token-card">
+  <div class="token-card-icon">🔗</div>
+  <div>
+    <h2 style="margin-bottom:0.25rem">Your personal link</h2>
+    <p class="text-muted mb-2">Use this link to return to your page and view your {{ "entries" if mode == "submit" else "guesses" }}.</p>
+    <div class="copy-group">
+      <code class="code-block" id="player-url">{{ player_url }}</code>
+      <button class="btn btn-secondary btn-sm" onclick="copyText('player-url', this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function copyText(id, btn) {
+    const text = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+</script>
+{% endblock %}

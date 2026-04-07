@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Admin — {{ game.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="row">
+    <div>
+      <h1>{{ game.title }}</h1>
+      <p class="text-muted">Admin dashboard</p>
+    </div>
+    <span class="badge badge-{{ game.state }}">{{ game.state }}</span>
+  </div>
+</div>
+
+{# ── ADMIN TOKEN ──────────────────────────────────────────────────────── #}
+<div class="card token-card">
+  <div class="token-card-icon">🔑</div>
+  <div>
+    <h2 style="margin-bottom:0.25rem">Your admin link</h2>
+    <p class="text-muted mb-2">Bookmark this — it's the only way to return to this dashboard. It was not emailed to anyone.</p>
+    <div class="copy-group">
+      <code class="code-block" id="admin-url">{{ admin_url }}</code>
+      <button class="btn btn-secondary btn-sm" onclick="copyText('admin-url', this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+{# ── JOIN LINK ────────────────────────────────────────────────────────── #}
+{% if game.state == "collecting" %}
+<div class="card">
+  <h2>Invite players</h2>
+  <p class="text-muted mb-1">Share this link so players can join and submit their songs.</p>
+  <div class="copy-group">
+    <code class="code-block" id="join-url">{{ join_url }}</code>
+    <button class="btn btn-secondary btn-sm" onclick="copyText('join-url', this)">Copy</button>
+  </div>
+</div>
+{% endif %}
+
+{# ── DEADLINES ────────────────────────────────────────────────────────── #}
+{% if game.submission_deadline or game.guessing_deadline %}
+<div class="card">
+  <h2>Deadlines</h2>
+  <div style="display:flex; gap:2rem; flex-wrap:wrap">
+    {% if game.submission_deadline %}
+    <div>
+      <div class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em">Submission deadline</div>
+      <div style="margin-top:0.2rem; font-weight:600">{{ game.submission_deadline.strftime("%-d %b %Y, %H:%M") }}</div>
+    </div>
+    {% endif %}
+    {% if game.guessing_deadline %}
+    <div>
+      <div class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em">Guessing deadline</div>
+      <div style="margin-top:0.2rem; font-weight:600">{{ game.guessing_deadline.strftime("%-d %b %Y, %H:%M") }}</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# ── CATEGORIES ───────────────────────────────────────────────────────── #}
+<div class="card">
+  <h2>Categories ({{ game.slots | length }})</h2>
+  <ol class="slot-list">
+    {% for slot in game.slots %}
+    <li>
+      <strong>{{ slot.name }}</strong>
+      <span class="text-muted">— {{ slot.fields | map(attribute='name') | join(', ') }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+
+{# ── PLAYERS ──────────────────────────────────────────────────────────── #}
+<div class="card">
+  <h2>Players ({{ players_status | length }})</h2>
+  {% if players_status %}
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Songs submitted</th>
+        {% if game.state == "guessing" %}<th>Guesses saved</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for ps in players_status %}
+      <tr>
+        <td>{{ ps["player"].name }}</td>
+        <td class="text-muted">{{ ps["player"].email }}</td>
+        <td>
+          {% if ps["complete"] %}
+          <span class="badge badge-correct">{{ ps["submitted"] }}/{{ ps["total"] }} ✓</span>
+          {% else %}
+          <span class="badge badge-skipped">{{ ps["submitted"] }}/{{ ps["total"] }}</span>
+          {% endif %}
+        </td>
+        {% if game.state == "guessing" %}
+        <td>
+          {% set guesses_made = ps["player"].guesses_made | length %}
+          {% set total_assigned = ps["player"].assigned_songs | length %}
+          {{ guesses_made }}/{{ total_assigned }}
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">No players have joined yet.</p>
+  {% endif %}
+</div>
+
+{# ── ACTIONS ──────────────────────────────────────────────────────────── #}
+{% if game.state == "collecting" %}
+<div class="card">
+  <h2>Distribute songs</h2>
+  {% if not players_status %}
+  <p class="text-muted mb-2">No players have joined yet.</p>
+  {% elif not all_complete %}
+  <div class="alert alert-info mb-2">
+    Not all players have submitted their songs yet. You can still distribute, but players with missing submissions will not receive any songs.
+  </div>
+  {% else %}
+  <p class="text-muted mb-2">All players have submitted. Ready to go!</p>
+  {% endif %}
+  <form method="POST" action="/admin/{{ game.admin_token }}/distribute"
+        onsubmit="return confirm('Distribute songs now? Players will receive their assignments by email and the submission phase will close.')">
+    <button type="submit" class="btn btn-primary" {% if not players_status %}disabled{% endif %}>
+      Distribute &amp; start guessing phase
+    </button>
+  </form>
+</div>
+
+{% elif game.state == "guessing" %}
+<div class="card">
+  <h2>Guessing progress</h2>
+  {% if guessing_progress %}
+  <p>
+    <strong>{{ guessing_progress["guessed"] }}</strong> / {{ guessing_progress["assigned"] }} guesses submitted so far.
+  </p>
+  {% endif %}
+  <form method="POST" action="/admin/{{ game.admin_token }}/end" style="margin-top:1rem"
+        onsubmit="return confirm('End the game now? Results will be revealed to all players.')">
+    <button type="submit" class="btn btn-danger">End game &amp; reveal results</button>
+  </form>
+</div>
+{% endif %}
+
+{# ── RESULTS ──────────────────────────────────────────────────────────── #}
+{% if game.state == "ended" and results %}
+
+<div class="card">
+  <h2>Leaderboard</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Player</th><th>Score</th></tr>
+    </thead>
+    <tbody>
+      {% for r in results["leaderboard"] %}
+      <tr>
+        <td><strong>{{ loop.index }}</strong></td>
+        <td>{{ r["player"].name }}</td>
+        <td>{{ r["correct"] }} / {{ r["total"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% for group in results["by_player"] %}
+<div class="card">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem">
+    <h2 style="margin:0">{{ group["player"].name }}</h2>
+    <span class="status-saved">{{ group["correct"] }} / {{ group["entries"] | length }} correct</span>
+  </div>
+  {% for entry in group["entries"] %}
+  {% set sub = entry["submission"] %}
+  <div class="song-card {% if entry['correct'] %}song-correct{% elif entry['guess'] %}song-incorrect{% endif %}">
+    <div class="song-slot-label">{{ sub.slot.name }}</div>
+    {% for field_name, value in sub.display_values() %}
+    <div class="submission-field-row">
+      <span class="submission-field-name">{{ field_name }}</span>
+      {% if value.startswith("http") %}
+      <a href="{{ value }}" target="_blank" rel="noopener" class="song-link submission-field-value">{{ value }} ↗</a>
+      {% else %}
+      <span class="submission-field-value">{{ value }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="result-row" style="margin-top:0.5rem">
+      <div>
+        <span class="text-muted">Submitted by:</span>
+        <strong>{{ sub.submitted_by.name }}</strong>
+      </div>
+      <div>
+        <span class="text-muted">Guessed:</span>
+        <strong>{% if entry["guess"] %}{{ entry["guess"].guessed_player.name }}{% else %}—{% endif %}</strong>
+      </div>
+      {% if entry["correct"] %}
+      <span class="badge badge-correct">✓ Correct</span>
+      {% elif entry["guess"] %}
+      <span class="badge badge-wrong">✗ Wrong</span>
+      {% else %}
+      <span class="badge badge-skipped">Not guessed</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+{% endif %}
+
+<script>
+  function copyText(id, btn) {
+    const text = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+</script>
+{% endblock %}

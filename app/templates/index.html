@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Create a Game — Undercovid DJ{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Create a new game</h1>
+  <p class="text-muted">Give the game a title, then define the categories players will fill in.</p>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <form method="POST" action="/games" id="create-form" onsubmit="prepareSubmit()">
+    <input type="hidden" name="slot_count" id="slot_count" value="0" />
+
+    <div class="form-group">
+      <label for="title">Game title</label>
+      <input type="text" id="title" name="title" placeholder="e.g. Office Party Playlist 2025" required />
+    </div>
+
+    <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.35rem; margin-top:1.25rem">
+      <h2 style="margin:0">Categories</h2>
+      <div style="display:flex; gap:0.5rem">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addSongSlot()">+ Song category</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addCustomSlot()">+ Custom category</button>
+      </div>
+    </div>
+    <p class="text-muted mb-2">Players submit one entry per category. Define what fields each category requires.</p>
+
+    <div id="slots-container"></div>
+
+    <h2 style="margin-bottom:0.25rem; margin-top:1.25rem">Deadlines <span class="text-muted" style="font-size:0.8rem; font-weight:400">(optional)</span></h2>
+    <p class="text-muted mb-2">Players are blocked from submitting after the deadline. Leave blank for no deadline.</p>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem">
+      <div class="form-group" style="margin:0">
+        <label for="submission_deadline">Submission deadline</label>
+        <input type="datetime-local" id="submission_deadline" name="submission_deadline" />
+      </div>
+      <div class="form-group" style="margin:0">
+        <label for="guessing_deadline">Guessing deadline</label>
+        <input type="datetime-local" id="guessing_deadline" name="guessing_deadline" />
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border); padding-top:1rem; margin-top:1rem">
+      <button type="submit" class="btn btn-primary">Create game</button>
+    </div>
+  </form>
+</div>
+
+<template id="tpl-slot">
+  <div class="builder-slot">
+    <div class="builder-slot-header">
+      <input type="text" class="slot-name-input" placeholder="Category name" required />
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addField(this)">+ Field</button>
+      <button type="button" class="btn btn-danger btn-sm" onclick="removeSlot(this)">Remove</button>
+    </div>
+    <div class="builder-fields"></div>
+  </div>
+</template>
+
+<template id="tpl-field">
+  <div class="builder-field">
+    <input type="text" class="field-name-input" placeholder="Field name (e.g. Artist)" required />
+    <select class="field-type-select">
+      <option value="text">Text</option>
+      <option value="url">URL</option>
+    </select>
+    <label class="field-required-label">
+      <input type="checkbox" class="field-required-check" checked /> Required
+    </label>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="removeField(this)">✕</button>
+  </div>
+</template>
+
+<script>
+  let slotCount = 0;
+
+  function addSlot(name, fields) {
+    const tpl = document.getElementById('tpl-slot');
+    const el = tpl.content.cloneNode(true).querySelector('.builder-slot');
+    el.dataset.idx = slotCount++;
+    if (name) el.querySelector('.slot-name-input').value = name;
+    document.getElementById('slots-container').appendChild(el);
+    if (fields) fields.forEach(f => addField(el.querySelector('[onclick="addField(this)"]'), f));
+    return el;
+  }
+
+  function addSongSlot() {
+    addSlot('', [
+      { name: 'Title', type: 'text', required: true },
+      { name: 'Artist', type: 'text', required: true },
+      { name: 'Link (Spotify, YouTube, …)', type: 'url', required: false },
+    ]);
+    focusLastSlotName();
+  }
+
+  function addCustomSlot() {
+    const el = addSlot('', [{ name: '', type: 'text', required: true }]);
+    el.querySelector('.slot-name-input').focus();
+  }
+
+  function removeSlot(btn) {
+    btn.closest('.builder-slot').remove();
+  }
+
+  function addField(btn, preset) {
+    const slot = btn.closest('.builder-slot');
+    const container = slot.querySelector('.builder-fields');
+    const tpl = document.getElementById('tpl-field');
+    const el = tpl.content.cloneNode(true).querySelector('.builder-field');
+    if (preset) {
+      el.querySelector('.field-name-input').value = preset.name;
+      el.querySelector('.field-type-select').value = preset.type;
+      el.querySelector('.field-required-check').checked = preset.required;
+    }
+    container.appendChild(el);
+    if (!preset) el.querySelector('.field-name-input').focus();
+  }
+
+  function removeField(btn) {
+    const field = btn.closest('.builder-field');
+    const slot = field.closest('.builder-slot');
+    const fields = slot.querySelectorAll('.builder-field');
+    if (fields.length <= 1) return; // keep at least one field
+    field.remove();
+  }
+
+  function focusLastSlotName() {
+    const slots = document.querySelectorAll('.slot-name-input');
+    if (slots.length) slots[slots.length - 1].focus();
+  }
+
+  function prepareSubmit() {
+    const form = document.getElementById('create-form');
+    const slots = document.querySelectorAll('.builder-slot');
+    document.getElementById('slot_count').value = slots.length;
+
+    slots.forEach((slot, i) => {
+      // Slot name
+      const nameInput = document.createElement('input');
+      nameInput.type = 'hidden';
+      nameInput.name = `slot_${i}_name`;
+      nameInput.value = slot.querySelector('.slot-name-input').value;
+      form.appendChild(nameInput);
+
+      // Fields
+      const fields = slot.querySelectorAll('.builder-field');
+      const countInput = document.createElement('input');
+      countInput.type = 'hidden';
+      countInput.name = `slot_${i}_field_count`;
+      countInput.value = fields.length;
+      form.appendChild(countInput);
+
+      fields.forEach((field, j) => {
+        const fn = document.createElement('input');
+        fn.type = 'hidden';
+        fn.name = `slot_${i}_field_${j}_name`;
+        fn.value = field.querySelector('.field-name-input').value;
+        form.appendChild(fn);
+
+        const ft = document.createElement('input');
+        ft.type = 'hidden';
+        ft.name = `slot_${i}_field_${j}_type`;
+        ft.value = field.querySelector('.field-type-select').value;
+        form.appendChild(ft);
+
+        const fr = document.createElement('input');
+        fr.type = 'hidden';
+        fr.name = `slot_${i}_field_${j}_required`;
+        fr.value = field.querySelector('.field-required-check').checked ? 'on' : 'off';
+        form.appendChild(fr);
+      });
+    });
+  }
+
+  // Start with one song category by default
+  addSongSlot();
+</script>
+{% endblock %}

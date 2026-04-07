@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block title %}{{ player.name }} — {{ game.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="row">
+    <div>
+      <h1>{{ game.title }}</h1>
+      <p class="text-muted">Playing as <strong>{{ player.name }}</strong></p>
+    </div>
+    <span class="badge badge-{{ game.state }}">{{ game.state }}</span>
+  </div>
+</div>
+
+{# ── PLAYER TOKEN ─────────────────────────────────────────────────────── #}
+<div class="card token-card">
+  <div class="token-card-icon">🔗</div>
+  <div>
+    <h2 style="margin-bottom:0.25rem">Your personal link</h2>
+    <p class="text-muted mb-2">Bookmark this to return to your page at any time. It was also sent to your email.</p>
+    <div class="copy-group">
+      <code class="code-block" id="player-url">{{ player_url }}</code>
+      <button class="btn btn-secondary btn-sm" onclick="copyText('player-url', this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+{% if errors %}
+<div class="alert alert-error">
+  <strong>Please fix the following before submitting:</strong>
+  <ul style="margin:0.4rem 0 0 1.1rem; padding:0">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{# ── COLLECTING STATE ─────────────────────────────────────────────────── #}
+{% if game.state == "collecting" %}
+
+<div class="card">
+  <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.75rem">
+    <h2 style="margin:0">Submit your entries</h2>
+    {% if last_saved_at %}
+    <span class="status-saved">✓ Last saved {{ last_saved_at.strftime("%-d %b, %H:%M") }}</span>
+    {% endif %}
+  </div>
+  <p class="text-muted mb-2">Fill in one entry per category. You can edit your answers until the admin starts the guessing phase.</p>
+
+  <form method="POST" action="/player/{{ player.player_token }}/submit">
+    {% for slot in slots %}
+    {% set sub = existing.get(slot.id) %}
+    {% set sub_values = {} %}
+    {% if sub %}
+      {% for sv in sub.values %}
+        {% set _ = sub_values.update({sv.field_id: sv.value}) %}
+      {% endfor %}
+    {% endif %}
+
+    <div class="slot-section">
+      <h3 class="slot-label-large">{{ slot.name }}</h3>
+      {% for field in slot.fields %}
+      <div class="form-group">
+        <label>
+          {{ field.name }}
+          {% if not field.required %}<span class="text-muted">(optional)</span>{% endif %}
+        </label>
+        {% if field.field_type == "url" %}
+        <input type="url" name="field_{{ field.id }}"
+               value="{{ sub_values.get(field.id, '') }}"
+               placeholder="https://"
+               {% if field.required %}required{% endif %} />
+        {% else %}
+        <input type="text" name="field_{{ field.id }}"
+               value="{{ sub_values.get(field.id, '') }}"
+               placeholder="{{ field.name }}"
+               {% if field.required %}required{% endif %} />
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+
+    <button type="submit" class="btn btn-primary">
+      {{ "Update entries" if existing else "Submit entries" }}
+    </button>
+  </form>
+</div>
+
+{# ── GUESSING STATE ───────────────────────────────────────────────────── #}
+{% elif game.state == "guessing" %}
+
+<div class="card card-muted">
+  <h2>Your submitted entries</h2>
+  <p class="text-muted mb-2">These are the entries the others will be guessing. They can't see your name.</p>
+  {% for sub in my_submissions %}
+  <div class="song-card song-card-dim">
+    <div class="song-slot-label">{{ sub.slot.name }}</div>
+    {% for field_name, value in sub.display_values() %}
+    <div class="own-field-row">
+      <span class="own-field-name">{{ field_name }}</span>
+      {% if value.startswith("http") %}
+      <a href="{{ value }}" target="_blank" rel="noopener" class="song-link">{{ value }} ↗</a>
+      {% else %}
+      <span class="own-field-value">{{ value }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-muted">You haven't submitted any entries.</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.75rem">
+    <h2 style="margin:0">Entries to identify</h2>
+    {% if last_guessed_at %}
+    <span class="status-saved">✓ Last saved {{ last_guessed_at.strftime("%-d %b, %H:%M") }}</span>
+    {% endif %}
+  </div>
+  <p class="text-muted mb-2">Guess which player submitted each entry. You can save and come back anytime.</p>
+
+  {% if assigned %}
+  <form method="POST" action="/player/{{ player.player_token }}/guesses">
+    {% for entry in assigned %}
+    {% set sub = entry["submission"] %}
+    {% set eg = entry["existing_guess"] %}
+    <div class="guess-card">
+      <div class="song-slot-label">{{ sub.slot.name }}</div>
+      {% for field_name, value in sub.display_values() %}
+      <div class="guess-field-row">
+        <dt class="guess-field-name">{{ field_name }}</dt>
+        <dd class="guess-field-value">
+          {% if value.startswith("http") %}
+          <a href="{{ value }}" target="_blank" rel="noopener" class="song-link">{{ value }} ↗</a>
+          {% else %}
+          {{ value }}
+          {% endif %}
+        </dd>
+      </div>
+      {% endfor %}
+      <div class="form-group" style="margin-top:0.75rem;margin-bottom:0">
+        <label>Who submitted this?</label>
+        <select name="guess_{{ sub.id }}" required>
+          <option value="">— select a player —</option>
+          {% for p in other_players %}
+          <option value="{{ p.id }}" {% if eg and eg.guessed_player_id == p.id %}selected{% endif %}>
+            {{ p.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-primary">Save guesses</button>
+  </form>
+  {% else %}
+  <p class="text-muted">No entries have been assigned to you yet.</p>
+  {% endif %}
+</div>
+
+{# ── ENDED STATE ──────────────────────────────────────────────────────── #}
+{% elif game.state == "ended" %}
+
+<div class="card">
+  <h2>Your score</h2>
+  <div class="score-display">
+    <span class="score-number">{{ score }}</span>
+    <span class="score-total">/ {{ assigned | length }}</span>
+  </div>
+  <p class="text-muted mt-1">correct guesses</p>
+</div>
+
+<div class="card">
+  <h2>Your guesses</h2>
+  {% for entry in assigned %}
+  {% set sub = entry["submission"] %}
+  {% set eg = entry["existing_guess"] %}
+  <div class="song-card {% if entry['correct'] %}song-correct{% elif eg %}song-incorrect{% endif %}">
+    <div class="song-slot-label">{{ sub.slot.name }}</div>
+    {% for field_name, value in sub.display_values() %}
+    <div class="submission-field-row">
+      <span class="submission-field-name">{{ field_name }}</span>
+      {% if value.startswith("http") %}
+      <a href="{{ value }}" target="_blank" rel="noopener" class="song-link">{{ value }} ↗</a>
+      {% else %}
+      <span>{{ value }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="result-row">
+      <div>
+        <span class="text-muted">Your guess:</span>
+        <strong>{% if eg %}{{ eg.guessed_player.name }}{% else %}—{% endif %}</strong>
+      </div>
+      <div>
+        <span class="text-muted">Actually submitted by:</span>
+        <strong>{{ sub.submitted_by.name }}</strong>
+      </div>
+      {% if entry["correct"] %}
+      <span class="badge badge-correct">✓ Correct</span>
+      {% elif eg %}
+      <span class="badge badge-wrong">✗ Wrong</span>
+      {% else %}
+      <span class="badge badge-skipped">Skipped</span>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="text-muted">No entries were assigned to you.</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Your submitted entries</h2>
+  <p class="text-muted mb-2">These are the entries the others had to identify as yours.</p>
+  {% for sub in my_submissions %}
+  <div class="song-card">
+    <div class="song-slot-label">{{ sub.slot.name }}</div>
+    {% for field_name, value in sub.display_values() %}
+    <div class="submission-field-row">
+      <span class="submission-field-name">{{ field_name }}</span>
+      {% if value.startswith("http") %}
+      <a href="{{ value }}" target="_blank" rel="noopener" class="song-link">{{ value }} ↗</a>
+      {% else %}
+      <span>{{ value }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-muted">You didn't submit any entries.</p>
+  {% endfor %}
+</div>
+
+{% endif %}
+
+<script>
+  function copyText(id, btn) {
+    const text = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+</script>
+{% endblock %}
